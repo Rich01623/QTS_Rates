@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QTS | Haulage Dashboard v6.7</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDOPkYduNBvti4HWX2izIhCrrQ02uk5SL0&libraries=geometry,places"></script>
+    
+    <style>
+        :root { --qts-blue: #0060A9; --qts-dark-navy: #0f172a; }
+        body { margin: 0; font-family: 'Segoe UI', sans-serif; background-color: #f8fafc; min-height: 100vh; }
+        .qts-card { background: white; border-radius: 10px; border: 1px solid rgba(0,0,0,0.1); overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
+        .card-header-bar { height: 6px; background: var(--qts-dark-navy); width: 100%; }
+        .card-content { padding: 1.25rem; }
+        .qts-input { border: 2px solid #e2e8f0; background: #fff; padding: 0.35rem 0.75rem; border-radius: 6px; width: 100%; font-size: 0.85rem; outline: none; }
+        .qts-input:focus { border-color: var(--qts-blue); }
+        .qts-input:disabled { background: #f8fafc; color: #0f172a; cursor: not-allowed; border-color: #f1f5f9; }
+        .section-header-blue { font-size: 14px; font-weight: 900; color: var(--qts-blue); text-transform: uppercase; border-bottom: 1px solid #f1f5f9; padding-bottom: 4px; font-style: italic; }
+        .label-text { font-size: 9px; font-weight: 800; color: #64748b; text-transform: uppercase; margin-bottom: 2px; display: block; letter-spacing: 0.05em; }
+        .sidebar-container { background: var(--qts-dark-navy); color: white; border-radius: 20px; border-bottom: 8px solid var(--qts-blue); box-shadow: 0 10px 30px rgba(0,0,0,0.3); }
+        #map { width: 100%; height: 450px; border-radius: 12px; background: #242f3e; }
+        .map-wrapper { background: var(--qts-dark-navy); padding: 12px; border-radius: 16px; }
+        .btn-primary { background: var(--qts-blue); color: white; font-weight: 900; text-transform: uppercase; padding: 1rem; border-radius: 8px; cursor: pointer; width: 100%; transition: background 0.2s; }
+        .btn-primary:hover { background: #004d87; }
+        .btn-clear { font-size: 10px; font-weight: 700; color: #64748b; text-transform: uppercase; cursor: pointer; }
+        .opti-badge { background: #10b981; color: white; font-size: 8px; padding: 1px 4px; border-radius: 4px; margin-left: 4px; vertical-align: middle; display: none; }
+        @media print { .no-print { display: none; } body { background: white; } }
+    </style>
+</head>
+<body class="p-4 md:p-8 pb-12">
+
+<div class="max-w-[1300px] mx-auto">
+    <header class="flex justify-between items-end mb-8 no-print">
+        <img src="logo.png" alt="QTS" style="max-height: 70px;">
+        <div class="text-right">
+            <h2 class="text-[10px] font-black uppercase tracking-widest text-slate-500">Rate Calculation Engine</h2>
+            <p class="text-xs font-bold text-blue-700 italic">v6.7 Smart Optimization</p>
+        </div>
+    </header>
+
+    <main class="grid grid-cols-1 lg:grid-cols-12 gap-8 mb-12">
+        <div class="lg:col-span-8 space-y-6">
+            
+            <section class="qts-card">
+                <div class="card-header-bar"></div>
+                <div class="card-content">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="section-header-blue" style="border:none;">01. Journey Logistics</h3>
+                        <button onclick="clearJourney()" class="btn-clear no-print"><i class="fas fa-trash-can mr-1"></i> Clear</button>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                        <div><span class="label-text">Collection Point</span><input type="text" id="pickup" class="qts-input uppercase font-bold" placeholder="Postcode" onchange="calculate()"></div>
+                        <div><span class="label-text">Final Delivery Point</span><input type="text" id="delivery" class="qts-input uppercase font-bold" placeholder="Postcode" onchange="calculate()"></div>
+                    </div>
+                    
+                    <div id="waypointContainer" style="display: none;" class="mb-4">
+                        <span class="label-text text-blue-600 font-black italic">Intermediate Drops (Adds £50 per line)</span>
+                        <textarea id="waypoints" class="qts-input uppercase text-xs font-bold" rows="2" placeholder="One postcode per line" oninput="update()" onchange="calculate()"></textarea>
+                    </div>
+
+                    <div class="flex flex-wrap gap-6 mb-6 no-print">
+                        <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" id="multiDropCheck" class="accent-blue-600" onchange="toggleMultiDrop()"><span class="label-text" style="margin:0">Multi-Drop Route</span></label>
+                        <label id="optiContainer" class="flex items-center gap-2 cursor-pointer opacity-40 transition-opacity"><input type="checkbox" id="optimizeCheck" class="accent-green-600" onchange="calculate()" disabled><span class="label-text" style="margin:0">Route Optimisation</span><span id="optiBadge" class="opti-badge">ON</span></label>
+                        <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" id="manualMode" class="accent-blue-600" onchange="toggleManual()"><span class="label-text" style="margin:0">Manual Overrides</span></label>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="p-3 bg-slate-50 rounded-lg text-center"><span class="label-text">Miles (+5%)</span><input type="number" id="mileInput" class="qts-input text-center font-black text-xl" value="0" oninput="update()" disabled></div>
+                        <div class="p-3 bg-slate-50 rounded-lg text-center"><span class="label-text">Truck Hours (x1.25)</span><input type="number" id="timeInput" step="0.01" class="qts-input text-center font-black text-xl" value="0.00" oninput="update()" disabled></div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="qts-card">
+                <div class="card-header-bar"></div>
+                <div class="card-content">
+                    <h3 class="section-header-blue mb-4">02. Requirements</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div class="grid grid-cols-2 gap-3">
+                            <div><span class="label-text">Load Time (Hrs)</span><input type="number" id="loadHrs" value="1" step="0.5" class="qts-input text-center" oninput="update()"></div>
+                            <div><span class="label-text">Tip Time (Hrs)</span><input type="number" id="tipHrs" value="1" step="0.5" class="qts-input text-center" oninput="update()"></div>
+                        </div>
+                        <div class="space-y-1">
+                            <label class="check-item flex items-center p-2 border rounded hover:bg-slate-50 cursor-pointer"><input type="checkbox" id="checkTailLift" onchange="update()" class="mr-2"><span class="flex-grow text-[11px] font-bold">Tail Lift Required</span><span class="text-blue-600 font-black text-[11px]">£50</span></label>
+                            <label class="check-item flex items-center p-2 border rounded hover:bg-slate-50 cursor-pointer"><input type="checkbox" id="checkPre10" onchange="update()" class="mr-2"><span class="flex-grow text-[11px] font-bold">Pre-10am Delivery</span><span class="text-blue-600 font-black text-[11px]">£25</span></label>
+                            <label class="check-item flex items-center p-2 border rounded hover:bg-slate-50 cursor-pointer"><input type="checkbox" id="checkParking" onchange="update()" class="mr-2"><span class="flex-grow text-[11px] font-bold">Parking & Tolls</span><span class="text-blue-600 font-black text-[11px]">£50</span></label>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <div class="lg:col-span-4">
+            <div class="sidebar-container p-6 sticky top-8">
+                <div class="space-y-4 mb-8 border-b border-slate-800 pb-6 text-center">
+                    <h3 class="text-blue-400 font-black uppercase tracking-[0.2em] text-xs">Standard Contract Rate</h3>
+                </div>
+                
+                <div class="py-6 text-center">
+                    <span class="label-text text-slate-400 mb-2">Grand Total (Ex VAT)</span>
+                    <div id="totalDisp" class="text-6xl font-black italic text-white drop-shadow-lg">£0.00</div>
+                </div>
+
+                <div class="opacity-60 space-y-4 mt-8 mb-6 text-[9px] uppercase tracking-widest leading-loose text-center">
+                    <p>Calculation includes 25% Margin<br>£1.25 Fuel Surcharge Index</p>
+                </div>
+                
+                <button class="btn-primary mt-4 no-print" onclick="window.print()">Print Rate Sheet</button>
+            </div>
+        </div>
+    </main>
+
+    <div class="map-wrapper">
+        <div id="map"></div>
+        <div class="p-2 text-center text-[10px] uppercase font-black text-slate-500 tracking-widest no-print">QTS Live Route Engine • v6.7</div>
+    </div>
+</div>
+
+<script>
+    const HOURLY_TOTAL = 61.241826; 
+    const MPG = 8;
+    const LTR_GAL = 4.546;
+    
+    // Hardcoded logic values
+    const LOCKED_MARGIN = 25; // 25%
+    const LOCKED_PPL = 1.25;  // £1.25
+
+    let map, directionsRenderer, directionsService;
+
+    const darkModeStyle = [{"elementType":"geometry","stylers":[{"color":"#242f3e"}]},{"elementType":"labels.text.fill","stylers":[{"color":"#746855"}]},{"elementType":"labels.text.stroke","stylers":[{"color":"#242f3e"}]},{"featureType":"administrative.locality","elementType":"labels.text.fill","stylers":[{"color":"#d59563"}]},{"featureType":"poi","elementType":"labels.text.fill","stylers":[{"color":"#d59563"}]},{"featureType":"poi.park","elementType":"geometry","stylers":[{"color":"#263c3f"}]},{"featureType":"road","elementType":"geometry","stylers":[{"color":"#38414e"}]},{"featureType":"road","elementType":"geometry.stroke","stylers":[{"color":"#212a37"}]},{"featureType":"road.highway","elementType":"geometry","stylers":[{"color":"#746855"}]},{"featureType":"road.highway","elementType":"geometry.stroke","stylers":[{"color":"#1f2835"}]},{"featureType":"water","elementType":"geometry","stylers":[{"color":"#17263c"}]}];
+
+    function initMap() {
+        directionsService = new google.maps.DirectionsService();
+        directionsRenderer = new google.maps.DirectionsRenderer({
+            polylineOptions: { strokeColor: "#0060A9", strokeWeight: 6, strokeOpacity: 0.9 }
+        });
+        map = new google.maps.Map(document.getElementById("map"), {
+            zoom: 6,
+            center: { lat: 52.355, lng: -1.174 },
+            disableDefaultUI: false,
+            styles: darkModeStyle
+        });
+        directionsRenderer.setMap(map);
+    }
+
+    function clearJourney() {
+        document.getElementById('pickup').value = '';
+        document.getElementById('delivery').value = '';
+        document.getElementById('waypoints').value = '';
+        document.getElementById('mileInput').value = 0;
+        document.getElementById('timeInput').value = '0.00';
+        directionsRenderer.setDirections({routes: []});
+        update();
+    }
+
+    function toggleMultiDrop() {
+        const isM = document.getElementById('multiDropCheck').checked;
+        document.getElementById('waypointContainer').style.display = isM ? 'block' : 'none';
+        
+        const optiBox = document.getElementById('optimizeCheck');
+        const optiCont = document.getElementById('optiContainer');
+        optiBox.disabled = !isM;
+        if(!isM) optiBox.checked = false;
+        optiCont.classList.toggle('opacity-40', !isM);
+        
+        update(); calculate();
+    }
+
+    function toggleManual() {
+        const isM = document.getElementById('manualMode').checked;
+        document.getElementById('mileInput').disabled = !isM;
+        document.getElementById('timeInput').disabled = !isM;
+        if(!isM) calculate();
+    }
+
+    function calculate() {
+        const p = document.getElementById('pickup').value;
+        const d = document.getElementById('delivery').value;
+        if (p.length < 3 || d.length < 3) return;
+
+        let wps = [];
+        const isMulti = document.getElementById('multiDropCheck').checked;
+        const shouldOptimize = document.getElementById('optimizeCheck').checked;
+        
+        document.getElementById('optiBadge').style.display = shouldOptimize ? 'inline-block' : 'none';
+
+        if (isMulti) {
+            document.getElementById('waypoints').value.split('\n').forEach(l => { 
+                if(l.trim()) wps.push({location:l.trim(), stopover:true}); 
+            });
+        }
+
+        directionsService.route({
+            origin: p,
+            destination: d,
+            waypoints: wps,
+            optimizeWaypoints: shouldOptimize,
+            travelMode: 'DRIVING'
+        }, (res, stat) => {
+            if (stat === 'OK') {
+                directionsRenderer.setDirections(res);
+                let m = 0; let s = 0;
+                res.routes[0].legs.forEach(leg => { m += leg.distance.value; s += leg.duration.value; });
+                
+                if(!document.getElementById('manualMode').checked) {
+                    document.getElementById('mileInput').value = Math.round((m * 0.000621371) * 1.05);
+                    document.getElementById('timeInput').value = ((s / 3600) * 1.25).toFixed(2);
+                }
+                update();
+            }
+        });
+    }
+
+    function update() {
+        const miles = parseFloat(document.getElementById('mileInput').value) || 0;
+        const driveHrs = parseFloat(document.getElementById('timeInput').value) || 0;
+        const totalHrs = driveHrs + parseFloat(document.getElementById('loadHrs').value || 0) + parseFloat(document.getElementById('tipHrs').value || 0);
+        
+        const costTime = totalHrs * HOURLY_TOTAL;
+        const costFuel = (miles / MPG) * LTR_GAL * LOCKED_PPL;
+        
+        let extras = 0;
+        let dropCount = 0;
+        if(document.getElementById('checkTailLift').checked) extras += 50;
+        if(document.getElementById('checkPre10').checked) extras += 25;
+        if(document.getElementById('checkParking').checked) extras += 50;
+        
+        if(document.getElementById('multiDropCheck').checked) {
+            document.getElementById('waypoints').value.split('\n').forEach(line => { if(line.trim().length > 2) dropCount++; });
+            extras += (dropCount * 50);
+        }
+        
+        const rawCost = costTime + costFuel + extras;
+        
+        // Final math using locked 25% margin
+        const quote = Math.ceil(((rawCost * (1 + (LOCKED_MARGIN/100))) - 0.01) / 10) * 10;
+        
+        document.getElementById('totalDisp').innerText = '£' + (quote || 0).toFixed(2);
+    }
+    
+    window.onload = initMap;
+</script>
+</body>
+</html>
