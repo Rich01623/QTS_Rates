@@ -99,16 +99,12 @@
                     <h3 class="text-blue-400 font-black uppercase tracking-[0.2em] text-xs">Standard Contract Rate</h3>
                 </div>
                 
-                <div class="py-6 text-center">
+                <div class="py-10 text-center">
                     <span class="label-text text-slate-400 mb-2">Grand Total (Ex VAT)</span>
                     <div id="totalDisp" class="text-6xl font-black italic text-white drop-shadow-lg">£0.00</div>
                 </div>
-
-                <div class="opacity-60 space-y-4 mt-8 mb-6 text-[9px] uppercase tracking-widest leading-loose text-center">
-                    <p>Calculation includes 25% Margin<br>£1.25 Fuel Surcharge Index</p>
-                </div>
                 
-                <button class="btn-primary mt-4 no-print" onclick="window.print()">Print Rate Sheet</button>
+                <button class="btn-primary mt-6 no-print" onclick="window.print()">Print Rate Sheet</button>
             </div>
         </div>
     </main>
@@ -234,8 +230,6 @@
         }
         
         const rawCost = costTime + costFuel + extras;
-        
-        // Final math using locked 25% margin
         const quote = Math.ceil(((rawCost * (1 + (LOCKED_MARGIN/100))) - 0.01) / 10) * 10;
         
         document.getElementById('totalDisp').innerText = '£' + (quote || 0).toFixed(2);
